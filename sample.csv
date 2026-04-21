@@ -1,0 +1,14 @@
+#title,2026 韓國賞櫻
+#travelers,4 Travelers
+#heroImage,https://images.unsplash.com/photo-1517154421773-0529f29ea451?w=800
+#weatherLat,35.1796
+#weatherLon,129.0756
+#weatherWebsite,https://weather.com/weather/today/l/35.1796,129.0756
+
+date,time,category,location,originalName,address,phone,website,googleMaps,cost,description,accommodationMeals,heroImage,roomType
+2026-04-02,12:00,交通,大韓航空 KE2086 TPE桃園 12:00 - PUS釜山 15:30,,,,,,,,,,
+2026-04-02,16:00,交通,(已預約)機場接送 釜山金海機場 → Ananti at Busan Village 7人座 Hyundai Staria,,,,,,,₩20,000,,,,
+2026-04-02,16:00,住宿,Ananti at busan village,,釜山廣域市 機張郡 機張邑 機張海岸路 282,,https://www.ananti.kr,https://maps.app.goo.gl/xxx,₩459,980,,"早餐含","https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800","房型: Cabin II Ocean Village View(8+1床)\n床型: 雙人床×2 + 加床×1\n入住: 16:00 / 退房: 11:00"
+2026-04-03,09:00,活動,釜山 松島天空步道,송도해상케이블카,釜山廣域市 西區 암남공원로 185,,https://www.busanaircruise.co.kr,https://maps.app.goo.gl/yyy,₩15,000,纜車來回,,,
+2026-04-03,12:00,飲食,海鮮刺身市場 자갈치시장,자갈치시장,釜山廣域市 中區 자갈치해안로 52,+82-51-245-2594,,https://maps.app.goo.gl/zzz,,,,,
+2026-04-03,16:00,住宿,Ananti at busan village,,,,,,,,"早餐含",,
