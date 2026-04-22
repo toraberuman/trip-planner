@@ -73,12 +73,13 @@ function wIcon(code: number) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function costDisplay(item: ItineraryItem): string {
+/** Returns { main, sub?, isPerPerson } from a cost item, splitting KRW／TWD pairs. */
+function parseCostDisplay(item: ItineraryItem) {
   const c = item.cost;
-  if (c.perPerson) return `${c.perPerson} /人`;
-  if (c.total)     return c.total;
-  if (c.legacy)    return c.legacy;
-  return "";
+  const raw = c.perPerson ?? c.total ?? c.legacy ?? "";
+  if (!raw) return null;
+  const [main, ...rest] = raw.split("／").map((s: string) => s.trim());
+  return { main, sub: rest.join("／") || undefined, isPerPerson: !!c.perPerson };
 }
 
 // ---------------------------------------------------------------------------
@@ -340,7 +341,7 @@ export default function App() {
           {filteredItems.map((item, idx) => {
             const Icon      = catIcon(item.category);
             const colorCls  = catColor(item.category);
-            const cost      = costDisplay(item);
+            const cd        = parseCostDisplay(item);
 
             return (
               <motion.div
@@ -393,7 +394,7 @@ export default function App() {
 
                   {/* Title + cost */}
                   <div className="flex justify-between items-start gap-2">
-                    <div className="space-y-0.5 min-w-0">
+                    <div className="space-y-0.5 min-w-0 flex-1">
                       {/* Flight: show origin → dest inline */}
                       {item.flightNumber && item.departureAirport && item.arrivalAirport ? (
                         <div className="flex items-center gap-1.5 text-sm font-bold text-gray-900">
@@ -405,15 +406,20 @@ export default function App() {
                         <h4 className="text-base font-bold text-gray-900 leading-tight">{item.location}</h4>
                       )}
                       {item.category === "住宿" && item.roomInfo && (
-                        <p className="text-xs text-orange-600 font-medium line-clamp-1">{item.roomInfo.split("\n")[0]}</p>
+                        <p className="text-xs text-orange-500 font-medium truncate">
+                          {item.roomInfo.split("\n")[0].replace(/^[^：:]+[：:]\s*/, "").trim()
+                            || item.roomInfo.split("\n")[0]}
+                        </p>
                       )}
                       {item.originalName && !item.flightNumber && (
-                        <p className="text-xs text-gray-400">{item.originalName}</p>
+                        <p className="text-xs text-gray-400 truncate">{item.originalName}</p>
                       )}
                     </div>
-                    {cost && (
-                      <div className="text-right shrink-0">
-                        <div className="text-sm font-bold text-gray-900">{cost}</div>
+                    {cd && (
+                      <div className="text-right shrink-0 space-y-0.5">
+                        <div className="text-sm font-bold text-gray-900 whitespace-nowrap">{cd.main}</div>
+                        {cd.sub && <div className="text-[11px] text-gray-500 whitespace-nowrap">{cd.sub}</div>}
+                        {cd.isPerPerson && <div className="text-[10px] text-gray-400">（每人）</div>}
                       </div>
                     )}
                   </div>

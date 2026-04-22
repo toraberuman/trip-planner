@@ -26,18 +26,83 @@ function tokeniseCSV(raw: string): string[][] {
 }
 
 // ---------------------------------------------------------------------------
-// Column indices (cols 16-25 are optional new columns)
+// Header aliases — maps each possible column header (Chinese / English) to an
+// internal field name used throughout this file.
 // ---------------------------------------------------------------------------
-const COL = {
-  date: 0, dayOfWeek: 1, category: 2, time: 3,
-  location: 4, originalName: 5, detail: 6, meals: 7,
-  address: 8, phone: 9, website: 10, googleMaps: 11,
-  costKRW: 12, costTWD: 13, costAlt: 14,
-  endDate: 16, endTime: 17,
-  costPerPerson: 18, totalCost: 19, cashPayment: 20,
-  cardPayment: 21, prepaid: 22, paymentNote: 23,
-  reservationStatus: 24, reservationUrl: 25,
-} as const;
+const HEADER_ALIASES: Record<string, string> = {
+  // Chinese headers (user's Google Sheet columns)
+  "開始日期": "date",
+  "曜日": "dayOfWeek",
+  "結束日期": "endDate",
+  "類別": "category",
+  "是否預約": "reservationStatus",
+  "是否退稅": "taxRefund",
+  "開始時間": "time",
+  "結束時間": "endTime",
+  "地點": "location",
+  "原文名稱": "originalName",
+  "房型資訊": "detail",      // main category-specific detail column
+  "住宿餐食": "meals",
+  "地址": "address",
+  "電話": "phone",
+  "網站": "website",
+  "google maps": "googleMaps",
+  "刷卡": "cardPayment",
+  "台幣": "costTWD",
+  "現金": "cashPayment",
+  "note": "note",
+  "備註": "note",
+  "detail": "detail2",       // secondary free-text detail column
+  "checkin": "checkin",
+  "checkout": "checkout",
+  "mini bar": "minibar",
+  "parking": "parking",
+  "shuttle": "shuttle",
+  // English / legacy headers (backward compatibility)
+  "date": "date",
+  "category": "category",
+  "time": "time",
+  "enddate": "endDate",
+  "endtime": "endTime",
+  "location": "location",
+  "originalname": "originalName",
+  "meals": "meals",
+  "address": "address",
+  "phone": "phone",
+  "website": "website",
+  "googlemaps": "googleMaps",
+  "costkrw": "cardPayment",
+  "costtwd": "costTWD",
+  "reservationstatus": "reservationStatus",
+  "reservationurl": "reservationUrl",
+};
+
+// Default column positions — matches the user's actual Google Sheet layout.
+// These serve as fallback when the sheet has no recognisable header row.
+const DEFAULT_COL: Record<string, number> = {
+  date: 0, dayOfWeek: 1, endDate: 2, category: 3,
+  reservationStatus: 4, taxRefund: 5, time: 6, endTime: 7,
+  location: 8, originalName: 9, detail: 10, meals: 11,
+  address: 12, phone: 13, website: 14, googleMaps: 15,
+  cardPayment: 16, costTWD: 17, cashPayment: 18,
+  note: 19, checkin: 21, checkout: 22,
+  minibar: 23, parking: 24, shuttle: 25,
+};
+
+type CI = Record<string, number | undefined>;
+
+/** Try to build a CI from a header row.  Returns null if < 3 cells match. */
+function buildColIdx(row: string[]): CI | null {
+  const ci: CI = {};
+  let hits = 0;
+  for (let i = 0; i < row.length; i++) {
+    const cell = row[i].trim();
+    // Try exact match (important for Chinese), then lower-case (for English)
+    const key = HEADER_ALIASES[cell] ?? HEADER_ALIASES[cell.toLowerCase()];
+    if (key) { ci[key] = i; hits++; }
+  }
+  return hits >= 3 ? ci : null;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,28 +119,32 @@ function computeDow(dateStr: string): string {
   return isNaN(d.getTime()) ? "" : `週${DOW_ZH[d.getDay()]}`;
 }
 
-const g = (cells: string[], n: number) => cells[n]?.trim() ?? "";
+/** Get cell value by column index (safe: returns "" for missing/negative index) */
+const g = (cells: string[], n: number | undefined): string =>
+  (n !== undefined && n >= 0) ? (cells[n]?.trim() ?? "") : "";
 
 // ---------------------------------------------------------------------------
 // parseCost
 // ---------------------------------------------------------------------------
-function parseCost(cells: string[]): CostDetail {
-  const perPerson   = g(cells, COL.costPerPerson)  || undefined;
-  const total       = g(cells, COL.totalCost)       || undefined;
-  const cash        = g(cells, COL.cashPayment)     || undefined;
-  const card        = g(cells, COL.cardPayment)     || undefined;
-  const prepaid     = g(cells, COL.prepaid)         || undefined;
-  const paymentNote = g(cells, COL.paymentNote)     || undefined;
+function parseCost(cells: string[], ci: CI): CostDetail {
+  const card        = g(cells, ci.cardPayment)    || undefined;
+  const twd         = g(cells, ci.costTWD)        || undefined;
+  const cash        = g(cells, ci.cashPayment)    || undefined;
+  const prepaid     = g(cells, ci.prepaid)        || undefined;
+  const paymentNote = g(cells, ci.paymentNote)    || undefined;
+  const perPerson   = g(cells, ci.costPerPerson)  || undefined;
+  const total       = g(cells, ci.totalCost)      || undefined;
 
   let legacy: string | undefined;
   if (!perPerson && !total) {
-    const krw = g(cells, COL.costKRW);
-    const twd = g(cells, COL.costTWD);
-    const alt = g(cells, COL.costAlt);
-    if (krw && twd) legacy = `${krw}／${twd}`;
-    else if (krw)   legacy = krw;
-    else if (alt)   legacy = alt;
-    else if (twd)   legacy = twd;
+    // Primary amount: card payment > legacy KRW column > cash
+    const primary = card || g(cells, ci.costKRW) || cash;
+    const secondary = twd || "";
+    const alt = g(cells, ci.costAlt) || "";
+    if (primary && secondary) legacy = `${primary}／${secondary}`;
+    else if (primary)         legacy = primary;
+    else if (alt)             legacy = alt;
+    else if (secondary)       legacy = secondary;
   }
   return { perPerson, total, cash, card, prepaid, paymentNote, legacy };
 }
@@ -121,7 +190,7 @@ function parseLocation(raw: string): {
 }
 
 // ---------------------------------------------------------------------------
-// parseDetail — category-aware col 6 parsing
+// parseDetail — category-aware complex detail column
 // ---------------------------------------------------------------------------
 function parseDetail(category: string, raw: string): Partial<ItineraryItem> {
   if (!raw) return {};
@@ -150,9 +219,11 @@ function parseDetail(category: string, raw: string): Partial<ItineraryItem> {
         items.push({ name: p[0] ?? "", qty: p[1] ?? "", price: p[2] ?? "", subtotal: p[3] || undefined });
       }
     }
-    return { detail: raw, orderItems: items.length ? items : undefined,
+    return {
+      detail: raw, orderItems: items.length ? items : undefined,
       preTaxTotal: meta["pretax"] || undefined, tax: meta["tax"] || undefined,
-      taxIncludedTotal: meta["total"] || undefined, taxRefund: meta["refund"] === "1" };
+      taxIncludedTotal: meta["total"] || undefined, taxRefund: meta["refund"] === "1",
+    };
   }
 
   if (category === "桜" || category === "紅葉") {
@@ -166,21 +237,10 @@ function parseDetail(category: string, raw: string): Partial<ItineraryItem> {
   }
 
   if (category === "住宿") {
-    const lines = raw.split("\n");
-    const struct: Record<string, string> = {};
-    const prose: string[] = [];
-    for (const line of lines) {
-      const m = line.match(/^(minibar|parking|shuttle|checkin|checkout)[：:](.*)/i);
-      if (m) struct[m[1].toLowerCase()] = m[2].trim();
-      else prose.push(line);
-    }
-    return { detail: raw,
-      minibar:  struct["minibar"]  || undefined,
-      parking:  struct["parking"]  || undefined,
-      shuttle:  struct["shuttle"]  || undefined,
-      checkin:  struct["checkin"]  || undefined,
-      checkout: struct["checkout"] || undefined,
-      roomInfo: prose.filter(Boolean).join("\n").trim() || undefined };
+    // checkin / checkout / minibar / parking / shuttle now have dedicated columns;
+    // the detail column (房型資訊) is treated entirely as roomInfo (rendered as
+    // labelled key:value rows in the detail dialog).
+    return { detail: raw, roomInfo: raw.trim() || undefined };
   }
 
   return { detail: raw, note: raw };
@@ -189,36 +249,63 @@ function parseDetail(category: string, raw: string): Partial<ItineraryItem> {
 // ---------------------------------------------------------------------------
 // rowToItem
 // ---------------------------------------------------------------------------
-function rowToItem(cells: string[]): ItineraryItem {
-  const date     = g(cells, COL.date);
-  const category = g(cells, COL.category);
-  const locP     = parseLocation(g(cells, COL.location));
-  const detP     = parseDetail(category, g(cells, COL.detail));
-  const cost     = parseCost(cells);
+function rowToItem(cells: string[], ci: CI): ItineraryItem {
+  const date     = g(cells, ci.date);
+  const category = g(cells, ci.category);
+  const locP     = parseLocation(g(cells, ci.location));
+  const detP     = parseDetail(category, g(cells, ci.detail));
+  const cost     = parseCost(cells, ci);
 
-  const explicit = g(cells, COL.reservationStatus) as ReservationStatus | "";
-  const reservationStatus = (explicit as ReservationStatus) || locP.reservationStatus;
+  // Reservation status: dedicated column takes priority over location-prefix parsing
+  const resRaw = g(cells, ci.reservationStatus);
+  const reservationStatus: ReservationStatus | undefined =
+    resRaw && resRaw !== "否"
+      ? (resRaw === "是" ? "預約" : resRaw as ReservationStatus)
+      : locP.reservationStatus;
 
-  return {
+  // Tax refund: from dedicated column OR detail-parsing (買物 category)
+  const taxRefundRaw = g(cells, ci.taxRefund);
+  const taxRefundFromCol = taxRefundRaw === "是" || taxRefundRaw === "true" || taxRefundRaw === "1";
+
+  // Hotel fields from dedicated columns (override any detail-parsed values)
+  const checkinFromCol  = g(cells, ci.checkin)  || undefined;
+  const checkoutFromCol = g(cells, ci.checkout) || undefined;
+  const minibarFromCol  = g(cells, ci.minibar)  || undefined;
+  const parkingFromCol  = g(cells, ci.parking)  || undefined;
+  const shuttleFromCol  = g(cells, ci.shuttle)  || undefined;
+  const noteFromCol     = g(cells, ci.note)     || undefined;
+
+  const item: ItineraryItem = {
     date, dayOfWeek: computeDow(date), category,
-    time:    g(cells, COL.time),
-    endDate: g(cells, COL.endDate)   || undefined,
-    endTime: g(cells, COL.endTime)   || locP.endTime,
+    time:    g(cells, ci.time),
+    endDate: g(cells, ci.endDate)  || undefined,
+    endTime: g(cells, ci.endTime)  || locP.endTime,
     location:     locP.location,
-    originalName: g(cells, COL.originalName) || undefined,
-    address:      g(cells, COL.address)      || undefined,
-    phone:        g(cells, COL.phone)        || undefined,
-    website:      g(cells, COL.website)      || undefined,
-    googleMaps:   g(cells, COL.googleMaps)   || undefined,
-    accommodationMeals: g(cells, COL.meals)  || undefined,
+    originalName: g(cells, ci.originalName) || undefined,
+    address:      g(cells, ci.address)      || undefined,
+    phone:        g(cells, ci.phone)        || undefined,
+    website:      g(cells, ci.website)      || undefined,
+    googleMaps:   g(cells, ci.googleMaps)   || undefined,
+    accommodationMeals: g(cells, ci.meals)  || undefined,
     cost, reservationStatus,
-    reservationUrl:   g(cells, COL.reservationUrl) || undefined,
+    reservationUrl: g(cells, ci.reservationUrl) || undefined,
     airline:          locP.airline,
     flightNumber:     locP.flightNumber,
     departureAirport: locP.departureAirport,
     arrivalAirport:   locP.arrivalAirport,
     ...detP,
   };
+
+  // Dedicated columns override detail-parsed values
+  if (taxRefundFromCol)  item.taxRefund = true;
+  if (noteFromCol)       item.note     = noteFromCol;
+  if (checkinFromCol)    item.checkin  = checkinFromCol;
+  if (checkoutFromCol)   item.checkout = checkoutFromCol;
+  if (minibarFromCol)    item.minibar  = minibarFromCol;
+  if (parkingFromCol)    item.parking  = parkingFromCol;
+  if (shuttleFromCol)    item.shuttle  = shuttleFromCol;
+
+  return item;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,27 +316,41 @@ export function parseItineraryCSV(csvText: string): TripData {
   const meta: Record<string, string> = {};
   const dayMeta: Record<string, DayMeta> = {};
   const items: ItineraryItem[] = [];
-  let pastHeader = false;
+  let ci: CI = { ...DEFAULT_COL };           // start with defaults
+  let headerDetected = false;
   let pendingTravelerCount: number | undefined;
 
   for (const row of rows) {
     const first = (row[0] ?? "").trim();
     if (row.every(r => r.trim() === "")) continue;
 
+    // Metadata rows (#key value)
     if (first.startsWith("#")) {
       meta[first.slice(1).toLowerCase()] = (row[1] ?? "").trim();
       continue;
     }
-    if (!pastHeader && first.toLowerCase() === "date") { pastHeader = true; continue; }
-    if (!DATE_RE.test(first)) continue;
+
+    // Header row detection (Chinese or English)
+    if (!headerDetected && !DATE_RE.test(first)) {
+      const detected = buildColIdx(row);
+      if (detected) {
+        ci = { ...DEFAULT_COL, ...detected };   // detected overrides defaults
+        headerDetected = true;
+      }
+      // Whether detected or not, skip non-date rows before first data row
+      continue;
+    }
+
+    if (!DATE_RE.test(first)) continue;        // skip non-date rows
 
     const date = first;
-    const cat  = (row[COL.category] ?? "").trim();
+    const cat  = (row[ci.category ?? 3] ?? "").trim();
 
+    // ── Special pseudo-rows ──────────────────────────────────────────────────
     if (cat === "天氣") {
-      const [latS, lonS] = (row[COL.location] ?? "").split(",");
+      const [latS, lonS] = (row[ci.location ?? 8] ?? "").split(",");
       const lat = parseFloat(latS), lon = parseFloat(lonS);
-      const site = (row[COL.website] ?? "").trim() || undefined;
+      const site = (row[ci.website ?? 14] ?? "").trim() || undefined;
       const dm = dayMeta[date] ?? (dayMeta[date] = {});
       if (!isNaN(lat)) dm.weatherLat = lat;
       if (!isNaN(lon)) dm.weatherLon = lon;
@@ -258,15 +359,15 @@ export function parseItineraryCSV(csvText: string): TripData {
     }
 
     if (cat === "大圖") {
-      const img = (row[COL.website] ?? "").trim();
+      const img = (row[ci.website ?? 14] ?? "").trim();
       if (img) { (dayMeta[date] ?? (dayMeta[date] = {})).heroImage = img; }
       continue;
     }
 
     if (cat === "info") {
       const dm = dayMeta[date] ?? (dayMeta[date] = {});
-      dm.title = (row[COL.location] ?? "").trim() || undefined;
-      const noteRaw = (row[COL.detail] ?? "").trim();
+      dm.title = (row[ci.location ?? 8] ?? "").trim() || undefined;
+      const noteRaw = (row[ci.detail ?? 10] ?? "").trim();
       if (noteRaw) {
         dm.notes = Object.fromEntries(
           noteRaw.split("|").filter(s => s.includes(":")).map(s => {
@@ -280,11 +381,12 @@ export function parseItineraryCSV(csvText: string): TripData {
       }
       continue;
     }
+    // ─────────────────────────────────────────────────────────────────────────
 
-    items.push(rowToItem(row));
+    items.push(rowToItem(row, ci));
   }
 
-  // Propagate hotel details to consecutive nights at same property
+  // Propagate hotel details to consecutive nights at the same property
   let lastStay: ItineraryItem | null = null;
   for (const item of items) {
     if (item.category === "住宿") {
@@ -306,16 +408,18 @@ export function parseItineraryCSV(csvText: string): TripData {
 
   const dates = items.map(i => i.date).filter(Boolean).sort();
   const allCosts = items.map(i => i.cost.legacy ?? "").join("");
-  const currency = allCosts.includes("₩") ? "KRW" : allCosts.includes("¥") ? "JPY" : "KRW";
+  const currency = allCosts.includes("¥") ? "JPY"
+    : allCosts.includes("₩") ? "KRW"
+    : "KRW";
 
   return {
-    title:          meta["title"]         ?? "旅遊行程",
-    dateRange:      meta["daterange"]     ?? (dates.length ? `${dates[0]} to ${dates[dates.length - 1]}` : ""),
-    travelers:      meta["travelers"]     || undefined,
+    title:          meta["title"]           ?? "旅遊行程",
+    dateRange:      meta["daterange"]       ?? (dates.length ? `${dates[0]} to ${dates[dates.length - 1]}` : ""),
+    travelers:      meta["travelers"]       || undefined,
     travelerCount:  pendingTravelerCount,
-    heroImage:      meta["heroimage"]     || undefined,
-    weatherLat:     meta["weatherlat"]   ? Number(meta["weatherlat"])  : undefined,
-    weatherLon:     meta["weatherlon"]   ? Number(meta["weatherlon"])  : undefined,
+    heroImage:      meta["heroimage"]       || undefined,
+    weatherLat:     meta["weatherlat"]    ? Number(meta["weatherlat"])  : undefined,
+    weatherLon:     meta["weatherlon"]    ? Number(meta["weatherlon"])  : undefined,
     weatherWebsite: meta["weatherwebsite"] || undefined,
     currency, dayMeta, items,
   };

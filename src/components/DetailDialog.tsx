@@ -2,13 +2,21 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X, Plane, Train, Car, ExternalLink, Globe, MapPin,
-  Phone, Clock, Flower2, Leaf, ShoppingBag,
-  Utensils, Hotel, Navigation,
+  Phone, Clock, Navigation,
 } from "lucide-react";
 import { ItineraryItem, CostDetail, OrderItem } from "../types";
 import { Linkify } from "../lib/Linkify";
 import { parseAmount, toTWD } from "../lib/useExchangeRate";
 import { cn } from "../lib/utils";
+
+// ---------------------------------------------------------------------------
+// Category display titles
+// ---------------------------------------------------------------------------
+const CATEGORY_TITLE: Record<string, string> = {
+  住宿: "住宿詳細資訊", 食: "餐廳資訊", 餐廳: "餐廳資訊", 飲食: "餐廳資訊",
+  買物: "購物資訊", 交通: "交通資訊", 景點: "景點資訊", 體驗: "體驗資訊",
+  桜: "賞花資訊", 紅葉: "紅葉資訊", 機票: "航班資訊",
+};
 
 // ---------------------------------------------------------------------------
 // Props
@@ -155,19 +163,6 @@ function CommonFields({ item, rates, currency }: { item: ItineraryItem; rates: R
 }
 
 // ---------------------------------------------------------------------------
-// Header (date/time row, used by most cards)
-// ---------------------------------------------------------------------------
-function ItemHeader({ item }: { item: ItineraryItem }) {
-  return (
-    <div className="flex items-center gap-2 text-xs text-gray-400 font-bold mb-3">
-      <Clock size={12} />
-      <span>{item.date} {item.dayOfWeek}</span>
-      <span>{item.time}{item.endTime ? ` → ${item.endTime}` : ""}</span>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Airport code parser  "TPE桃園" → { code: "TPE", city: "桃園" }
 // ---------------------------------------------------------------------------
 function parseAirport(str: string) {
@@ -251,8 +246,6 @@ function TransitCard({ item, rates, currency }: { item: ItineraryItem; rates: Re
 
   return (
     <div className="space-y-4">
-      <ItemHeader item={item} />
-
       {isTrainLike ? (
         /* Train ticket */
         <div className="border-2 border-blue-100 rounded-xl overflow-hidden">
@@ -315,21 +308,12 @@ function RestaurantCard({ item, rates, currency }: { item: ItineraryItem; rates:
 
   return (
     <div className="space-y-4">
-      <ItemHeader item={item} />
-
-      <div className="flex items-center gap-2">
-        <Utensils size={16} className="text-red-500 shrink-0" />
-        <div>
-          <div className="font-bold text-gray-900">{item.location}</div>
-          {item.originalName && <div className="text-xs text-gray-500">{item.originalName}</div>}
-        </div>
-        {item.reservationStatus && (
-          <span className={cn("ml-auto shrink-0 px-2 py-0.5 rounded text-[10px] font-bold",
-            item.reservationStatus === "現場" ? "bg-gray-100 text-gray-500" : "bg-green-100 text-green-700")}>
-            {item.reservationStatus}
-          </span>
-        )}
-      </div>
+      {item.reservationStatus && (
+        <span className={cn("inline-block px-2 py-0.5 rounded text-[10px] font-bold",
+          item.reservationStatus === "現場" ? "bg-gray-100 text-gray-500" : "bg-green-100 text-green-700")}>
+          {item.reservationStatus}
+        </span>
+      )}
 
       {orders.length > 0 && (
         <div className="border border-gray-100 rounded-xl overflow-hidden">
@@ -374,16 +358,6 @@ const parseRoomLines = (text: string) =>
 function HotelCard({ item, rates, currency }: { item: ItineraryItem; rates: Record<string, number>; currency: string }) {
   return (
     <div className="space-y-4">
-      <ItemHeader item={item} />
-
-      <div className="flex items-start gap-2">
-        <Hotel size={16} className="text-orange-500 shrink-0 mt-0.5" />
-        <div>
-          <div className="font-bold text-gray-900">{item.location}</div>
-          {item.originalName && <div className="text-xs text-gray-500">{item.originalName}</div>}
-        </div>
-      </div>
-
       {/* Check-in / check-out */}
       {(item.checkin || item.checkout || item.time) && (
         <div className="grid grid-cols-2 gap-3">
@@ -445,15 +419,9 @@ function ShoppingCard({ item, rates, currency }: { item: ItineraryItem; rates: R
 
   return (
     <div className="space-y-4">
-      <ItemHeader item={item} />
-
-      <div className="flex items-center gap-2">
-        <ShoppingBag size={16} className="text-pink-500 shrink-0" />
-        <div className="font-bold text-gray-900">{item.location}</div>
-        {item.taxRefund && (
-          <span className="ml-auto shrink-0 bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">可退稅</span>
-        )}
-      </div>
+      {item.taxRefund && (
+        <span className="inline-block bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">可退稅</span>
+      )}
 
       {items.length > 0 && (
         <div className="border border-gray-100 rounded-xl overflow-hidden">
@@ -499,18 +467,6 @@ function BlossomCard({ item, rates, currency }: { item: ItineraryItem; rates: Re
   const isSakura = item.category === "桜";
   return (
     <div className="space-y-4">
-      <ItemHeader item={item} />
-
-      <div className="flex items-center gap-2">
-        {isSakura
-          ? <Flower2 size={18} className="text-pink-400 shrink-0" />
-          : <Leaf     size={18} className="text-amber-500 shrink-0" />}
-        <div>
-          <div className="font-bold text-gray-900">{item.location}</div>
-          {item.originalName && <div className="text-xs text-gray-500">{item.originalName}</div>}
-        </div>
-      </div>
-
       {(item.bloomDate || item.fullBloomDate) && (
         <div className="flex gap-3">
           {item.bloomDate && (
@@ -539,11 +495,6 @@ function BlossomCard({ item, rates, currency }: { item: ItineraryItem; rates: Re
 function GenericCard({ item, rates, currency }: { item: ItineraryItem; rates: Record<string, number>; currency: string }) {
   return (
     <div className="space-y-4">
-      <ItemHeader item={item} />
-      <div>
-        <div className="font-bold text-gray-900 text-base">{item.location}</div>
-        {item.originalName && <div className="text-xs text-gray-500 mt-0.5">{item.originalName}</div>}
-      </div>
       {item.reservationStatus && (
         <span className={cn("inline-block px-2 py-0.5 rounded text-[10px] font-bold",
           item.reservationStatus === "現場" ? "bg-gray-100 text-gray-500" : "bg-green-100 text-green-700")}>
@@ -583,6 +534,32 @@ export function DetailDialog({ item, open, onClose, rates, currency }: Props) {
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 bg-white p-6 shadow-2xl sm:rounded-3xl max-h-[88vh] overflow-y-auto data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
           <Dialog.Title className="sr-only">{item?.location ?? "詳細資訊"}</Dialog.Title>
           <Dialog.Description className="sr-only">{item?.category}</Dialog.Description>
+
+          {/* Visible header — category label + location + original name */}
+          {item && (
+            <div className="mb-5 pb-4 border-b border-gray-100 pr-8">
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                {item.flightNumber
+                  ? "航班資訊"
+                  : (CATEGORY_TITLE[item.category] ?? "行程資訊")}
+              </p>
+              <h2 className="text-lg font-bold text-gray-900 mt-0.5 leading-snug">
+                {item.flightNumber
+                  ? `${item.flightNumber}${item.airline ? `　${item.airline}` : ""}`
+                  : item.location}
+              </h2>
+              {!item.flightNumber && item.originalName && (
+                <p className="text-sm text-gray-400 mt-0.5">{item.originalName}</p>
+              )}
+              <div className="flex items-center gap-2 mt-1.5 text-[11px] text-gray-400">
+                <Clock size={11} />
+                <span>{item.date} {item.dayOfWeek}</span>
+                {item.time && (
+                  <span>{item.time}{item.endTime ? ` → ${item.endTime}` : ""}</span>
+                )}
+              </div>
+            </div>
+          )}
 
           {item && renderContent(item, rates, currency)}
 
