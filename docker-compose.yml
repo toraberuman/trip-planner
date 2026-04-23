@@ -1,0 +1,12 @@
+services:
+  trip-planner:
+    build: .
+    container_name: trip-planner
+    ports:
+      - "5175:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    env_file: .env
+    environment:
+      - NODE_ENV=development

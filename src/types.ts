@@ -47,6 +47,7 @@ export interface ItineraryItem {
   cost: CostDetail;
   reservationStatus?: ReservationStatus;
   reservationUrl?:    string;
+  reservationSite?:    string;
 
   // Accommodation
   accommodationMeals?: string;

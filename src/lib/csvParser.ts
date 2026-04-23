@@ -75,6 +75,7 @@ const HEADER_ALIASES: Record<string, string> = {
   "costtwd": "costTWD",
   "reservationstatus": "reservationStatus",
   "reservationurl": "reservationUrl",
+  "reservationsite": "reservationSite",
 };
 
 // Default column positions — matches the user's actual Google Sheet layout.
@@ -197,13 +198,14 @@ function parseDetail(category: string, raw: string): Partial<ItineraryItem> {
 
   if (category === "食" || category === "餐廳" || category === "飲食") {
     if (raw.includes("|")) {
+      // Format: 名稱,原文名稱,數量,單價
       const orderItems: OrderItem[] = raw.split("|").filter(Boolean).map(seg => {
         const p = seg.split(",").map(s => s.trim());
-        return { name: p[0] ?? "", originalName: p[1] || undefined, price: p[2] ?? "", qty: p[3] ?? "" };
+        return { name: p[0] ?? "", originalName: p[1] || undefined, qty: p[2] ?? "", price: p[3] ?? "" };
       });
       return { detail: raw, orderItems };
     }
-    return { detail: raw, note: raw };
+    return { detail: raw };
   }
 
   if (category === "買物") {
@@ -253,7 +255,11 @@ function rowToItem(cells: string[], ci: CI): ItineraryItem {
   const date     = g(cells, ci.date);
   const category = g(cells, ci.category);
   const locP     = parseLocation(g(cells, ci.location));
-  const detP     = parseDetail(category, g(cells, ci.detail));
+  // 住宿 → col 10 (房型資訊); 餐廳/買物 → col 20 (detail), fallback col 10
+  const rawDetail = (category === "住宿")
+    ? g(cells, ci.detail)
+    : (g(cells, ci.detail2) || g(cells, ci.detail));
+  const detP     = parseDetail(category, rawDetail);
   const cost     = parseCost(cells, ci);
 
   // Reservation status: dedicated column takes priority over location-prefix parsing
@@ -289,6 +295,7 @@ function rowToItem(cells: string[], ci: CI): ItineraryItem {
     accommodationMeals: g(cells, ci.meals)  || undefined,
     cost, reservationStatus,
     reservationUrl: g(cells, ci.reservationUrl) || undefined,
+    reservationSite: g(cells, ci.reservationSite) || undefined,
     airline:          locP.airline,
     flightNumber:     locP.flightNumber,
     departureAirport: locP.departureAirport,
